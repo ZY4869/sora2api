@@ -252,7 +252,7 @@
   };
 
   const normalizeTmpDownloadUrl = (url) => {
-    // 目标：把 `http://127.0.0.1:8000/tmp/xxx.mp4` 统一重写成 `/tmp/xxx.mp4`
+    // 目标：把 `http://127.0.0.1:8081/tmp/xxx.mp4` 统一重写成 `/tmp/xxx.mp4`
     // 这样无论用户用 127.0.0.1 / 局域网 IP / 域名访问，都能同源下载并应用 download 文件名。
     try {
       const u = new URL(String(url || ''), window.location.href);

@@ -12,7 +12,7 @@ max_poll_attempts = 600
 
 [server]
 host = "0.0.0.0"
-port = 8000
+port = 8081
 
 [debug]
 enabled = false
@@ -23,7 +23,7 @@ mask_token = true
 [cache]
 enabled = true
 timeout = 600
-base_url = "http://127.0.0.1:8000"
+base_url = "http://127.0.0.1:8081"
 
 [generation]
 image_timeout = 300
@@ -35,6 +35,8 @@ error_ban_threshold = 3
 [proxy]
 proxy_enabled = true
 proxy_url = "socks5://warp:1080"
+image_upload_proxy_enabled = false
+image_upload_proxy_url = ""
 
 [watermark_free]
 watermark_free_enabled = false

@@ -5,7 +5,7 @@ import base64
 import time
 import random
 import re
-from typing import Optional, AsyncGenerator, Dict, Any
+from typing import Optional, AsyncGenerator, Dict, Any, List
 from datetime import datetime
 from .sora_client import SoraClient
 from .token_manager import TokenManager
@@ -586,6 +586,7 @@ class GenerationHandler:
         is_first_chunk = True  # Track if this is the first chunk
         log_id = None  # Initialize log_id
         log_updated = False  # Track if log has been updated
+        proxy_trace: List[Dict[str, Any]] = []
 
         try:
             # Create initial log entry BEFORE submitting task to upstream
@@ -597,7 +598,8 @@ class GenerationHandler:
                 {},  # Empty response initially
                 -1,  # -1 means in-progress
                 -1.0,  # -1.0 means in-progress
-                task_id=None  # Will be updated after task submission
+                task_id=None,  # Will be updated after task submission
+                proxy_trace=proxy_trace,
             )
 
             # Upload image if provided
@@ -611,7 +613,12 @@ class GenerationHandler:
                     is_first_chunk = False
 
                 image_data = self._decode_base64_image(image)
-                media_id = await self.sora_client.upload_image(image_data, token_obj.token)
+                media_id = await self.sora_client.upload_image(
+                    image_data,
+                    token_obj.token,
+                    token_id=token_obj.id,
+                    proxy_trace=proxy_trace,
+                )
 
                 if stream:
                     yield self._format_stream_chunk(
@@ -654,7 +661,8 @@ class GenerationHandler:
                         orientation=model_config["orientation"],
                         media_id=media_id,
                         n_frames=n_frames,
-                        style_id=style_id
+                        style_id=style_id,
+                        proxy_trace=proxy_trace,
                     )
                 else:
                     # Normal video generation
@@ -670,7 +678,8 @@ class GenerationHandler:
                         style_id=style_id,
                         model=sora_model,
                         size=video_size,
-                        token_id=token_obj.id
+                        token_id=token_obj.id,
+                        proxy_trace=proxy_trace,
                     )
             else:
                 task_id = await self.sora_client.generate_image(
@@ -678,7 +687,8 @@ class GenerationHandler:
                     width=model_config["width"],
                     height=model_config["height"],
                     media_id=media_id,
-                    token_id=token_obj.id
+                    token_id=token_obj.id,
+                    proxy_trace=proxy_trace,
                 )
 
             # Save task to database
@@ -694,13 +704,27 @@ class GenerationHandler:
 
             # Update log entry with task_id now that we have it
             if log_id:
-                await self.db.update_request_log_task_id(log_id, task_id)
+                await self.db.update_request_log_task_id(
+                    log_id,
+                    task_id,
+                    proxy_data=self._build_proxy_log_payload(proxy_trace)
+                )
 
             # Record usage
             await self.token_manager.record_usage(token_obj.id, is_video=is_video)
             
             # Poll for results with timeout
-            async for chunk in self._poll_task_result(task_id, token_obj.token, is_video, stream, prompt, token_obj.id, log_id, start_time):
+            async for chunk in self._poll_task_result(
+                task_id,
+                token_obj.token,
+                is_video,
+                stream,
+                prompt,
+                token_obj.id,
+                log_id,
+                start_time,
+                proxy_trace,
+            ):
                 yield chunk
             
             # Record success
@@ -743,7 +767,8 @@ class GenerationHandler:
                     log_id,
                     response_body=json.dumps(response_data),
                     status_code=200,
-                    duration=duration
+                    duration=duration,
+                    proxy_data=self._build_proxy_log_payload(proxy_trace)
                 )
                 log_updated = True  # Mark log as updated
 
@@ -791,7 +816,8 @@ class GenerationHandler:
                         log_id,
                         response_body=json.dumps(error_response),
                         status_code=status_code,
-                        duration=duration
+                        duration=duration,
+                        proxy_data=self._build_proxy_log_payload(proxy_trace)
                     )
                     log_updated = True  # Mark log as updated
                 else:
@@ -800,7 +826,8 @@ class GenerationHandler:
                         log_id,
                         response_body=json.dumps({"error": str(e)}),
                         status_code=500,
-                        duration=duration
+                        duration=duration,
+                        proxy_data=self._build_proxy_log_payload(proxy_trace)
                     )
                     log_updated = True  # Mark log as updated
             # Wrap exception with token_id information
@@ -820,7 +847,8 @@ class GenerationHandler:
                         log_id,
                         response_body=json.dumps({"error": "Task failed or interrupted during processing"}),
                         status_code=500,
-                        duration=duration
+                        duration=duration,
+                        proxy_data=self._build_proxy_log_payload(proxy_trace)
                     )
                     debug_logger.log_info(f"Updated stuck log entry {log_id} from status -1 to 500 in finally block")
                 except Exception as finally_error:
@@ -930,7 +958,8 @@ class GenerationHandler:
 
     async def _poll_task_result(self, task_id: str, token: str, is_video: bool,
                                 stream: bool, prompt: str, token_id: int = None,
-                                log_id: int = None, start_time: float = None) -> AsyncGenerator[str, None]:
+                                log_id: int = None, start_time: float = None,
+                                proxy_trace: Optional[List[Dict[str, Any]]] = None) -> AsyncGenerator[str, None]:
         """Poll for task result with timeout"""
         # Get timeout from config
         timeout = config.video_timeout if is_video else config.image_timeout
@@ -983,7 +1012,8 @@ class GenerationHandler:
                         log_id,
                         response_body=json.dumps({"error": f"Generation timeout after {elapsed_time:.1f} seconds"}),
                         status_code=408,
-                        duration=duration
+                        duration=duration,
+                        proxy_data=self._build_proxy_log_payload(proxy_trace)
                     )
 
                 raise Exception(f"Upstream API timeout: Generation exceeded {timeout} seconds limit")
@@ -994,7 +1024,11 @@ class GenerationHandler:
             try:
                 if is_video:
                     # Get pending tasks to check progress
-                    pending_tasks = await self.sora_client.get_pending_tasks(token, token_id=token_id)
+                    pending_tasks = await self.sora_client.get_pending_tasks(
+                        token,
+                        token_id=token_id,
+                        proxy_trace=proxy_trace
+                    )
 
                     # Find matching task in pending tasks
                     task_found = False
@@ -1029,7 +1063,11 @@ class GenerationHandler:
                     # If task not found in pending tasks, it's completed - fetch from drafts
                     if not task_found:
                         debug_logger.log_info(f"Task {task_id} not found in pending tasks, fetching from drafts...")
-                        result = await self.sora_client.get_video_drafts(token, token_id=token_id)
+                        result = await self.sora_client.get_video_drafts(
+                            token,
+                            token_id=token_id,
+                            proxy_trace=proxy_trace
+                        )
                         items = result.get("items", [])
 
                         # Find matching task in drafts
@@ -1111,7 +1149,8 @@ class GenerationHandler:
                                         post_id = await self.sora_client.post_video_for_watermark_free(
                                             generation_id=generation_id,
                                             prompt=prompt,
-                                            token=token
+                                            token=token,
+                                            proxy_trace=proxy_trace,
                                         )
                                         debug_logger.log_info(f"Received post_id: {post_id}")
 
@@ -1282,7 +1321,11 @@ class GenerationHandler:
                                     yield "data: [DONE]\n\n"
                                 return
                 else:
-                    result = await self.sora_client.get_image_tasks(token, token_id=token_id)
+                    result = await self.sora_client.get_image_tasks(
+                        token,
+                        token_id=token_id,
+                        proxy_trace=proxy_trace
+                    )
                     task_responses = result.get("task_responses", [])
 
                     # Find matching task
@@ -1429,7 +1472,8 @@ class GenerationHandler:
                             log_id,
                             response_body=json.dumps({"error": "Cloudflare challenge or rate limit (429) triggered"}),
                             status_code=429,
-                            duration=duration
+                            duration=duration,
+                            proxy_data=self._build_proxy_log_payload(proxy_trace)
                         )
 
                     # Release resources
@@ -1563,9 +1607,11 @@ class GenerationHandler:
 
     async def _log_request(self, token_id: Optional[int], operation: str,
                           request_data: Dict[str, Any], response_data: Dict[str, Any],
-                          status_code: int, duration: float, task_id: Optional[str] = None) -> Optional[int]:
+                          status_code: int, duration: float, task_id: Optional[str] = None,
+                          proxy_trace: Optional[List[Dict[str, Any]]] = None) -> Optional[int]:
         """Log request to database and return log ID"""
         try:
+            proxy_data = self._build_proxy_log_payload(proxy_trace)
             log = RequestLog(
                 token_id=token_id,
                 task_id=task_id,
@@ -1573,13 +1619,18 @@ class GenerationHandler:
                 request_body=json.dumps(request_data),
                 response_body=json.dumps(response_data),
                 status_code=status_code,
-                duration=duration
+                duration=duration,
+                **(proxy_data or {})
             )
             return await self.db.log_request(log)
         except Exception as e:
             # Don't fail the request if logging fails
             print(f"Failed to log request: {e}")
             return None
+
+    def _build_proxy_log_payload(self, proxy_trace: Optional[List[Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
+        """Build request log proxy fields from the current trace."""
+        return self.sora_client.proxy_manager.build_log_proxy_payload(proxy_trace)
 
     # ==================== Prompt Enhancement Handler ====================
 
@@ -1712,7 +1763,11 @@ class GenerationHandler:
             yield self._format_stream_chunk(
                 reasoning_content="Uploading character avatar...\n"
             )
-            asset_pointer = await self.sora_client.upload_character_image(avatar_data, token_obj.token)
+            asset_pointer = await self.sora_client.upload_character_image(
+                avatar_data,
+                token_obj.token,
+                token_id=token_obj.id
+            )
             debug_logger.log_info(f"Avatar uploaded, asset_pointer: {asset_pointer}")
 
             # Step 5: Finalize character
@@ -1896,7 +1951,11 @@ class GenerationHandler:
             yield self._format_stream_chunk(
                 reasoning_content="Uploading character avatar...\n"
             )
-            asset_pointer = await self.sora_client.upload_character_image(avatar_data, token_obj.token)
+            asset_pointer = await self.sora_client.upload_character_image(
+                avatar_data,
+                token_obj.token,
+                token_id=token_obj.id
+            )
             debug_logger.log_info(f"Avatar uploaded, asset_pointer: {asset_pointer}")
 
             # Step 5: Finalize character
@@ -2096,7 +2155,11 @@ class GenerationHandler:
             yield self._format_stream_chunk(
                 reasoning_content="Uploading character avatar...\n"
             )
-            asset_pointer = await self.sora_client.upload_character_image(avatar_data, token_obj.token)
+            asset_pointer = await self.sora_client.upload_character_image(
+                avatar_data,
+                token_obj.token,
+                token_id=token_obj.id
+            )
             debug_logger.log_info(f"Avatar uploaded, asset_pointer: {asset_pointer}")
 
             # Step 5: Finalize character
@@ -2355,6 +2418,7 @@ class GenerationHandler:
         start_time = time.time()
         log_id = None
         log_updated = False
+        proxy_trace: List[Dict[str, Any]] = []
         try:
             # Create initial request log entry (in-progress)
             log_id = await self._log_request(
@@ -2364,7 +2428,8 @@ class GenerationHandler:
                 {},
                 -1,
                 -1.0,
-                task_id=None
+                task_id=None,
+                proxy_trace=proxy_trace,
             )
 
             yield self._format_stream_chunk(
@@ -2397,7 +2462,8 @@ class GenerationHandler:
                 prompt=clean_prompt,
                 extension_duration_s=extension_duration_s,
                 token=token_obj.token,
-                token_id=token_obj.id
+                token_id=token_obj.id,
+                proxy_trace=proxy_trace,
             )
             debug_logger.log_info(f"Video extension started, task_id: {task_id}")
 
@@ -2411,11 +2477,25 @@ class GenerationHandler:
             )
             await self.db.create_task(task)
             if log_id:
-                await self.db.update_request_log_task_id(log_id, task_id)
+                await self.db.update_request_log_task_id(
+                    log_id,
+                    task_id,
+                    proxy_data=self._build_proxy_log_payload(proxy_trace)
+                )
 
             await self.token_manager.record_usage(token_obj.id, is_video=True)
 
-            async for chunk in self._poll_task_result(task_id, token_obj.token, True, True, clean_prompt, token_obj.id):
+            async for chunk in self._poll_task_result(
+                task_id,
+                token_obj.token,
+                True,
+                True,
+                clean_prompt,
+                token_obj.id,
+                log_id,
+                start_time,
+                proxy_trace=proxy_trace,
+            ):
                 yield chunk
 
             await self.token_manager.record_success(token_obj.id, is_video=True)
@@ -2442,7 +2522,8 @@ class GenerationHandler:
                     log_id,
                     response_body=json.dumps(response_data),
                     status_code=200,
-                    duration=duration
+                    duration=duration,
+                    proxy_data=self._build_proxy_log_payload(proxy_trace)
                 )
                 log_updated = True
 
@@ -2473,14 +2554,16 @@ class GenerationHandler:
                         log_id,
                         response_body=json.dumps(error_response),
                         status_code=429 if is_cf_or_429 else 400,
-                        duration=duration
+                        duration=duration,
+                        proxy_data=self._build_proxy_log_payload(proxy_trace)
                     )
                 else:
                     await self.db.update_request_log(
                         log_id,
                         response_body=json.dumps({"error": str(e)}),
                         status_code=500,
-                        duration=duration
+                        duration=duration,
+                        proxy_data=self._build_proxy_log_payload(proxy_trace)
                     )
                 log_updated = True
 
@@ -2499,7 +2582,8 @@ class GenerationHandler:
                         log_id,
                         response_body=json.dumps({"error": "Task failed or interrupted during processing"}),
                         status_code=500,
-                        duration=duration
+                        duration=duration,
+                        proxy_data=self._build_proxy_log_payload(proxy_trace)
                     )
                 except Exception as finally_error:
                     debug_logger.log_error(

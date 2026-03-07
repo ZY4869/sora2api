@@ -51,7 +51,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/TheSmallHanCat/sora2api.git
+git clone https://github.com/ZY4869/sora2api.git
 cd sora2api
 
 # 启动服务
@@ -75,7 +75,7 @@ docker-compose -f docker-compose.warp.yml logs -f
 
 ```bash
 # 克隆项目
-git clone https://github.com/TheSmallHanCat/sora2api.git
+git clone https://github.com/ZY4869/sora2api.git
 cd sora2api
 
 # 创建虚拟环境
@@ -98,7 +98,7 @@ python main.py
 
 服务启动后，访问管理后台进行初始化配置：
 
-- **地址**: http://localhost:8000
+- **地址**: http://localhost:8081
 - **用户名**: `admin`
 - **密码**: `admin`
 
@@ -127,7 +127,7 @@ python main.py
 
 #### 基本信息（OpenAI标准格式，需要使用流式）
 
-- **端点**: `http://localhost:8000/v1/chat/completions`
+- **端点**: `http://localhost:8081/v1/chat/completions`
 - **认证**: 在请求头中添加 `Authorization: Bearer YOUR_API_KEY`
 - **默认 API Key**: `han1234`（建议修改）
 
@@ -203,7 +203,7 @@ python main.py
 **文生图**
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -221,7 +221,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 **图生图**
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -250,7 +250,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 **提示词优化（流式）**
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -268,7 +268,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 **提示词优化（非流式）**
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -286,7 +286,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 **文生视频**
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -304,7 +304,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 **图生视频**
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -335,7 +335,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 * 提示词内包含remix分享链接或id即可
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -362,7 +362,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
   ```
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -405,7 +405,7 @@ Sora2API 支持**视频风格**功能，可以为生成的视频应用预设风�
 **使用动漫风格生成视频**
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -423,7 +423,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 **使用复古风格生成视频**
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -441,7 +441,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 **在Remix中使用风格**
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -477,7 +477,7 @@ Sora2API 支持**视频角色生成**功能。
 上传视频提取角色信息，获取角色名称和头像。
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -504,7 +504,7 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 上传视频创建角色，然后使用该角色生成新视频。
 
 ```bash
-curl -X POST "http://localhost:8000/v1/chat/completions" \
+curl -X POST "http://localhost:8081/v1/chat/completions" \
   -H "Authorization: Bearer han1234" \
   -H "Content-Type: application/json" \
   -d '{
@@ -542,7 +542,7 @@ with open("video.mp4", "rb") as f:
 
 # 仅创建角色
 response = requests.post(
-    "http://localhost:8000/v1/chat/completions",
+    "http://localhost:8081/v1/chat/completions",
     headers={
         "Authorization": "Bearer han1234",
         "Content-Type": "application/json"
@@ -582,21 +582,39 @@ for line in response.iter_lines():
 ---
 
 ## 🙏 致谢
-* 感谢 [@庚崽](https://github.com/genz27) 提供的POW验证解决方案
-* 感谢 [@星火集市~小鑫学渣(93418328)](http://linggan10s.shop/) 提供的新的pow验证解决方案
-感谢所有贡献者和使用者的支持！
+- 项目源码、使用说明与后续更新统一维护在 [GitHub 仓库](https://github.com/ZY4869/sora2api)
+- 感谢所有贡献者和使用者的支持！
+
+---
+
+## 🔄 同步上游更新
+
+仅在同步上游更新时使用以下地址：
+
+`https://github.com/TheSmallHanCat/sora2api.git`
+
+```bash
+git remote add upstream https://github.com/TheSmallHanCat/sora2api.git
+# 若 upstream 已存在
+git remote set-url upstream https://github.com/TheSmallHanCat/sora2api.git
+
+git fetch upstream
+git checkout main
+git merge upstream/main
+git push origin main
+```
 
 ---
 
 ## 📞 联系方式
 
-- 提交 Issue：[GitHub Issues](https://github.com/TheSmallHanCat/sora2api/issues)
-- 讨论：[GitHub Discussions](https://github.com/TheSmallHanCat/sora2api/discussions)
+- 仓库主页：[GitHub 仓库](https://github.com/ZY4869/sora2api)
+- 提交 Issue：[GitHub Issues](https://github.com/ZY4869/sora2api/issues)
 
 ---
 
-**⭐ 如果这个项目对你有帮助，请给个 Star！**
+**⭐ 如果这个项目对你有帮助，欢迎给仓库点个 Star！**
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=TheSmallHanCat/sora2api&type=date&legend=top-left)](https://www.star-history.com/#TheSmallHanCat/sora2api&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=ZY4869/sora2api&type=date&legend=top-left)](https://www.star-history.com/#ZY4869/sora2api&type=date&legend=top-left)
