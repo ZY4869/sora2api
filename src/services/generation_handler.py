@@ -5,7 +5,7 @@ import base64
 import time
 import random
 import re
-from typing import Optional, AsyncGenerator, Dict, Any, List
+from typing import Optional, AsyncGenerator, Dict, Any, List, Tuple
 from datetime import datetime
 from .sora_client import SoraClient
 from .token_manager import TokenManager
@@ -23,6 +23,34 @@ class GenerationError(Exception):
     def __init__(self, message: str, token_id: Optional[int] = None):
         super().__init__(message)
         self.token_id = token_id
+
+
+def _extract_embedded_error_data(error: Exception) -> Tuple[Optional[Dict[str, Any]], Optional[int]]:
+    """Extract structured upstream error JSON from wrapped exception text."""
+    error_text = str(error).strip()
+    parsed_status = None
+
+    match = re.search(r"HTTP Error:\s*(\d+)", error_text)
+    if match:
+        parsed_status = int(match.group(1))
+
+    candidates = []
+    if error_text.startswith("{"):
+        candidates.append(error_text)
+
+    json_start = error_text.find("{")
+    if json_start != -1:
+        candidates.append(error_text[json_start:])
+
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+            if isinstance(payload, dict) and "error" in payload:
+                return payload, parsed_status
+        except Exception:
+            continue
+
+    return None, parsed_status
 
 # Model configuration
 MODEL_CONFIG = {
@@ -785,11 +813,7 @@ class GenerationHandler:
                 await self.concurrency_manager.release_video(token_obj.id)
 
             # Parse error message to check if it's a structured error (JSON)
-            error_response = None
-            try:
-                error_response = json.loads(str(e))
-            except:
-                pass
+            error_response, parsed_status_code = _extract_embedded_error_data(e)
 
             # Check for CF shield/429 error
             is_cf_or_429 = False
@@ -811,7 +835,7 @@ class GenerationHandler:
             if log_id:
                 if error_response:
                     # Structured error (e.g., unsupported_country_code, cf_shield_429)
-                    status_code = 429 if is_cf_or_429 else 400
+                    status_code = parsed_status_code or (429 if is_cf_or_429 else 400)
                     await self.db.update_request_log(
                         log_id,
                         response_body=json.dumps(error_response),

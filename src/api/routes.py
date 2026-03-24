@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from datetime import datetime
-from typing import List
+from typing import List, Optional, Dict, Any, Tuple
 import json
 import re
 import time
@@ -43,6 +43,34 @@ def _extract_remix_id(text: str) -> str:
         return match.group(0)
 
     return ""
+
+
+def _extract_embedded_error_data(error: Exception) -> Tuple[Optional[Dict[str, Any]], Optional[int]]:
+    """Extract structured upstream error JSON from wrapped exception text."""
+    error_text = str(error).strip()
+    parsed_status = None
+
+    match = re.search(r"HTTP Error:\s*(\d+)", error_text)
+    if match:
+        parsed_status = int(match.group(1))
+
+    candidates = []
+    if error_text.startswith("{"):
+        candidates.append(error_text)
+
+    json_start = error_text.find("{")
+    if json_start != -1:
+        candidates.append(error_text[json_start:])
+
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+            if isinstance(payload, dict) and "error" in payload:
+                return payload, parsed_status
+        except Exception:
+            continue
+
+    return None, parsed_status
 
 @router.get("/v1/models")
 async def list_models(api_key: str = Depends(verify_api_key_header)):
@@ -222,12 +250,7 @@ async def create_chat_completion(
                     ):
                         yield chunk
                 except Exception as e:
-                    # Try to parse structured error (JSON format)
-                    error_data = None
-                    try:
-                        error_data = json.loads(str(e))
-                    except:
-                        pass
+                    error_data, _ = _extract_embedded_error_data(e)
 
                     # Return OpenAI-compatible error format
                     if error_data and isinstance(error_data, dict) and "error" in error_data:
@@ -304,30 +327,35 @@ async def create_chat_completion(
                 )
 
     except Exception as e:
-        # Return OpenAI-compatible error format
+        error_data, parsed_status = _extract_embedded_error_data(e)
         duration_ms = (time.time() - start_time) * 1000
-        error_response = {
-            "error": {
-                "message": str(e),
-                "type": "server_error",
-                "param": None,
-                "code": None
+        if error_data and isinstance(error_data, dict) and "error" in error_data:
+            response_status = parsed_status or 400
+            error_response = error_data
+        else:
+            response_status = 500
+            error_response = {
+                "error": {
+                    "message": str(e),
+                    "type": "server_error",
+                    "param": None,
+                    "code": None
+                }
             }
-        }
         debug_logger.log_error(
             error_message=str(e),
-            status_code=500,
+            status_code=response_status,
             response_text=str(e),
             source="Client"
         )
         debug_logger.log_response(
-            status_code=500,
+            status_code=response_status,
             headers={"Content-Type": "application/json"},
             body=error_response,
             duration_ms=duration_ms,
             source="Client"
         )
         return JSONResponse(
-            status_code=500,
+            status_code=response_status,
             content=error_response
         )

@@ -84,6 +84,25 @@ async def _resolve_session_token(
     return None
 
 
+def _should_use_token_for_pow(
+    access_token: Optional[str] = None,
+    token_id: Optional[int] = None,
+) -> bool:
+    """Decide whether sentinel/POW should bind to the current account session.
+
+    Local POW is now session-aware by default when we have the current token,
+    which avoids generic invalid_request errors caused by sessionless sentinel
+    tokens. External POW still follows the explicit config switch.
+    """
+    if not (access_token or token_id):
+        return False
+
+    if config.pow_service_mode == "local":
+        return True
+
+    return bool(config.pow_service_use_token_for_pow)
+
+
 async def _get_browser(proxy_url: str = None):
     """Get or create browser instance (reuses existing browser)"""
     global _browser, _playwright, _current_proxy
@@ -329,7 +348,7 @@ async def _get_cached_sentinel_token(
     global _cached_sentinel_token_map
 
     # Whether current request should be token-aware for POW
-    use_token_for_pow = bool(config.pow_service_use_token_for_pow and (access_token or token_id))
+    use_token_for_pow = _should_use_token_for_pow(access_token=access_token, token_id=token_id)
     disable_cache_for_local_token_pow = bool(use_token_for_pow and config.pow_service_mode == "local")
     if use_token_for_pow and access_token:
         cache_key = access_token
@@ -414,7 +433,7 @@ def _invalidate_sentinel_cache(access_token: Optional[str] = None):
         access_token: Optional current access token for token-scoped cache invalidation
     """
     global _cached_sentinel_token_map
-    use_token_for_pow = bool(config.pow_service_use_token_for_pow and access_token)
+    use_token_for_pow = _should_use_token_for_pow(access_token=access_token)
     cache_key = access_token if use_token_for_pow else "__default__"
 
     if cache_key in _cached_sentinel_token_map:
@@ -942,7 +961,7 @@ class SoraClient:
         - external: Get complete sentinel token from external POW service
         - local: Generate POW locally and call sentinel/req endpoint
         """
-        use_token_for_pow = bool(config.pow_service_use_token_for_pow and (token or token_id))
+        use_token_for_pow = _should_use_token_for_pow(access_token=token, token_id=token_id)
         session_token = await _resolve_session_token(access_token=token, token_id=token_id) if use_token_for_pow else None
 
         # Check if external POW service is configured
@@ -1400,8 +1419,9 @@ class SoraClient:
             "n_frames": n_frames,
             "model": model,
             "inpaint_items": inpaint_items,
-            "style_id": style_id
         }
+        if style_id is not None:
+            json_data["style_id"] = style_id
 
         proxy_url = await self.proxy_manager.get_proxy_url(token_id)
 
