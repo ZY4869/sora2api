@@ -51,7 +51,20 @@ class ProxyManager:
         return None
 
     async def get_image_upload_proxy_url(self, token_id: Optional[int] = None) -> Optional[str]:
-        """Get proxy URL specifically for image uploads."""
+        """Get proxy URL specifically for image uploads.
+
+        Priority:
+        1. Image upload proxy (if enabled in config)
+        2. Token-specific proxy (if token_id provided)
+        3. Global proxy (fallback)
+        4. None (no proxy)
+
+        Args:
+            token_id: Token ID (optional). Used for fallback to token-specific proxy.
+
+        Returns:
+            Proxy URL string or None
+        """
         config = await self.db.get_proxy_config()
         if config.image_upload_proxy_enabled and config.image_upload_proxy_url:
             return config.image_upload_proxy_url
@@ -206,7 +219,6 @@ class ProxyManager:
             "proxy_country_code": primary.get("proxy_country_code") if primary else None,
             "proxy_details": json.dumps(details, ensure_ascii=False),
         }
-
     async def update_proxy_config(
         self,
         enabled: bool,
